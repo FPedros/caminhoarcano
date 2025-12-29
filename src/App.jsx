@@ -166,21 +166,16 @@ const tarotCards = {
 
 function formatDateInput(value) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
-  const parts = [];
 
-  if (digits.length >= 2) {
-    parts.push(digits.slice(0, 2));
+  if (digits.length <= 2) {
+    return digits;
   }
 
-  if (digits.length >= 4) {
-    parts.push(digits.slice(2, 4));
+  if (digits.length <= 4) {
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   }
 
-  if (digits.length > 4) {
-    parts.push(digits.slice(4, 8));
-  }
-
-  return parts.join("/");
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
 function parseDateInput(value) {
@@ -294,6 +289,7 @@ export default function App() {
   const [chinese, setChinese] = useState(null);
   const [cabala, setCabala] = useState(null);
   const [tarot, setTarot] = useState(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const starWrapRef = useRef(null);
   const starCanvasRef = useRef(null);
 
@@ -528,32 +524,60 @@ export default function App() {
 
       <div className="relative z-10">
         <header className="sticky top-0 z-20 border-b border-white/10 bg-color5/90 backdrop-blur">
-          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-            <a className="text-sm font-semibold uppercase tracking-[0.3em]" href="#inicio">
-              Caminho Arcano
-            </a>
-            <nav className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.2em] text-white/70 sm:text-sm">
+          <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:py-4">
+            <div className="flex w-full items-center justify-between sm:w-auto">
+              <a
+                className="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.3em]"
+                href="#inicio"
+              >
+                <img
+                  className="h-14 w-14 rounded-full border border-white/15 bg-white/10 p-1"
+                  src="/logo.svg"
+                  alt="Caminho Arcano"
+                />
+                Caminho Arcano
+              </a>
+              <button
+                className="rounded-full border border-white/15 px-3 py-2 text-xs uppercase tracking-[0.2em] text-white/70 transition hover:border-white/30 hover:text-color1 sm:hidden"
+                type="button"
+                aria-controls="main-nav"
+                aria-expanded={isMenuOpen}
+                onClick={() => setIsMenuOpen((prev) => !prev)}
+              >
+                Menu
+              </button>
+            </div>
+            <nav
+              id="main-nav"
+              className={`${
+                isMenuOpen ? "flex" : "hidden"
+              } w-full flex-col gap-2 rounded-2xl border border-white/10 bg-color5/80 p-3 text-xs uppercase tracking-[0.2em] text-white/70 sm:flex sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:border-0 sm:bg-transparent sm:p-0 sm:text-sm`}
+            >
               <a
                 className="rounded-full border border-transparent px-3 py-1 transition hover:border-white/30 hover:text-color1"
                 href="#ocidental"
+                onClick={() => setIsMenuOpen(false)}
               >
-                Signo ocidental
+                Signo
               </a>
               <a
                 className="rounded-full border border-transparent px-3 py-1 transition hover:border-white/30 hover:text-color1"
                 href="#chines"
+                onClick={() => setIsMenuOpen(false)}
               >
                 Horoscopo chines
               </a>
               <a
                 className="rounded-full border border-transparent px-3 py-1 transition hover:border-white/30 hover:text-color1"
                 href="#cabala"
+                onClick={() => setIsMenuOpen(false)}
               >
                 Cabala
               </a>
               <a
                 className="rounded-full border border-transparent px-3 py-1 transition hover:border-white/30 hover:text-color1"
                 href="#tarot"
+                onClick={() => setIsMenuOpen(false)}
               >
                 Tarot
               </a>
@@ -562,11 +586,11 @@ export default function App() {
         </header>
 
         <main>
-          <section className="relative flex min-h-screen items-center overflow-hidden py-16 lg:py-20" id="inicio">
-            <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-10 px-4 lg:grid-cols-2">
-            <div className="fade-up space-y-8">
-              <div className="max-w-2xl space-y-5">
-                <h1 className="text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
+          <section className="relative flex min-h-screen items-center overflow-hidden py-12 sm:py-16 lg:py-20" id="inicio">
+            <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-8 px-4 sm:gap-10 lg:grid-cols-2">
+            <div className="fade-up space-y-6 sm:space-y-8">
+              <div className="max-w-2xl space-y-4 sm:space-y-5">
+                <h1 className="text-3xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
                   2026: O Ano da Ascensao.
                 </h1>
                 <h2 className="text-base font-light text-white/80 sm:text-lg lg:text-xl">
@@ -583,7 +607,7 @@ export default function App() {
 
               <form
                 id="birth-form"
-                className="fade-up grid gap-4 rounded-2xl border border-white/15 bg-white/5 p-6 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur"
+                className="fade-up grid gap-3 rounded-2xl border border-white/15 bg-white/5 p-5 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur sm:gap-4 sm:p-6"
                 style={{ animationDelay: "0.1s" }}
                 onSubmit={handleSubmit}
               >
@@ -638,7 +662,7 @@ export default function App() {
             </div>
 
             <div
-              className="fade-up relative h-[45vh] w-full overflow-hidden rounded-3xl border border-white/10 shadow-[0_24px_60px_rgba(13,4,21,0.35)] lg:h-[70vh]"
+              className="fade-up relative h-[40vh] w-full overflow-hidden rounded-3xl border border-white/10 shadow-[0_24px_60px_rgba(13,4,21,0.35)] sm:h-[45vh] lg:h-[70vh]"
               style={{ animationDelay: "0.15s" }}
             >
               <video
@@ -658,23 +682,23 @@ export default function App() {
           </div>
         </section>
 
-        <section className="py-16" id="ocidental">
-          <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
+        <section className="py-12 sm:py-16" id="ocidental">
+          <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 sm:gap-10 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
             <div className="fade-up space-y-3">
-              <h2 className="text-2xl font-semibold sm:text-3xl">Signo ocidental</h2>
+              <h2 className="text-xl font-semibold sm:text-3xl">Signo</h2>
               <p className="text-sm text-white/70 sm:text-base">
                 O zodiaco tradicional e seus elementos de expressao.
               </p>
             </div>
-            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-8 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur">
+            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-6 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur sm:p-8">
               <div className="flex items-center justify-between text-sm text-white/70">
                 <span className="rounded-full border border-color3/40 bg-color3/20 px-3 py-1 text-[0.65rem] uppercase tracking-[0.2em]">
                   Elemento
                 </span>
                 <span>{western?.element ?? "--"}</span>
               </div>
-              <h3 className="mt-6 text-2xl font-semibold">
-                {western?.name ?? "Seu signo ocidental"}
+              <h3 className="mt-6 text-xl font-semibold sm:text-2xl">
+                {western?.name ?? "Seu signo"}
               </h3>
               <p className="mt-2 text-sm text-white/50">{western?.range ?? "--"}</p>
               <p className="mt-4 text-base text-white/75">
@@ -684,22 +708,22 @@ export default function App() {
           </div>
         </section>
 
-        <section className="bg-color2/10 py-16" id="chines">
-          <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
+        <section className="bg-color2/10 py-12 sm:py-16" id="chines">
+          <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 sm:gap-10 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
             <div className="fade-up space-y-3">
-              <h2 className="text-2xl font-semibold sm:text-3xl">Horoscopo chines</h2>
+              <h2 className="text-xl font-semibold sm:text-3xl">Horoscopo chines</h2>
               <p className="text-sm text-white/70 sm:text-base">
                 O ciclo lunar com 12 animais guardioes.
               </p>
             </div>
-            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-8 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur">
+            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-6 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur sm:p-8">
               <div className="flex items-center justify-between text-sm text-white/70">
                 <span className="rounded-full border border-color3/40 bg-color3/20 px-3 py-1 text-[0.65rem] uppercase tracking-[0.2em]">
                   Ano base
                 </span>
                 <span>{chinese?.year ?? "--"}</span>
               </div>
-              <h3 className="mt-6 text-2xl font-semibold">
+              <h3 className="mt-6 text-xl font-semibold sm:text-2xl">
                 {chinese?.name ?? "Seu horoscopo chines"}
               </h3>
               <p className="mt-4 text-base text-white/75">
@@ -712,22 +736,22 @@ export default function App() {
           </div>
         </section>
 
-        <section className="py-16" id="cabala">
-          <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
+        <section className="py-12 sm:py-16" id="cabala">
+          <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 sm:gap-10 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
             <div className="fade-up space-y-3">
-              <h2 className="text-2xl font-semibold sm:text-3xl">Cabala e caminho</h2>
+              <h2 className="text-xl font-semibold sm:text-3xl">Cabala e caminho</h2>
               <p className="text-sm text-white/70 sm:text-base">
                 Numerologia cabalistica para revelar seu caminho.
               </p>
             </div>
-            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-8 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur">
+            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-6 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur sm:p-8">
               <div className="flex items-center justify-between text-sm text-white/70">
                 <span className="rounded-full border border-color3/40 bg-color3/20 px-3 py-1 text-[0.65rem] uppercase tracking-[0.2em]">
                   Foco
                 </span>
                 <span>{cabala?.keyword ?? "--"}</span>
               </div>
-              <h3 className="mt-6 text-2xl font-semibold">
+              <h3 className="mt-6 text-xl font-semibold sm:text-2xl">
                 {cabala ? `Caminho ${cabala.number}` : "Caminho cabalistico"}
               </h3>
               <p className="mt-4 text-base text-white/75">
@@ -737,22 +761,22 @@ export default function App() {
           </div>
         </section>
 
-        <section className="bg-color2/10 py-16" id="tarot">
-          <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
+        <section className="bg-color2/10 py-12 sm:py-16" id="tarot">
+          <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 sm:gap-10 lg:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
             <div className="fade-up space-y-3">
-              <h2 className="text-2xl font-semibold sm:text-3xl">Tarot pessoal</h2>
+              <h2 className="text-xl font-semibold sm:text-3xl">Tarot pessoal</h2>
               <p className="text-sm text-white/70 sm:text-base">
                 Arcano maior associado ao seu caminho.
               </p>
             </div>
-            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-8 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur">
+            <div className="fade-up rounded-3xl border border-white/15 bg-white/5 p-6 shadow-[0_24px_60px_rgba(13,4,21,0.45)] backdrop-blur sm:p-8">
               <div className="flex items-center justify-between text-sm text-white/70">
                 <span className="rounded-full border border-color3/40 bg-color3/20 px-3 py-1 text-[0.65rem] uppercase tracking-[0.2em]">
                   Arcano
                 </span>
                 <span>{tarot ? `Arcano ${tarot.number}` : "--"}</span>
               </div>
-              <h3 className="mt-6 text-2xl font-semibold">
+              <h3 className="mt-6 text-xl font-semibold sm:text-2xl">
                 {tarot?.name ?? "Sua carta do tarot"}
               </h3>
               <p className="mt-4 text-base text-white/75">
@@ -763,7 +787,7 @@ export default function App() {
         </section>
         </main>
 
-        <footer className="border-t border-white/10 bg-color5/85 py-10">
+        <footer className="border-t border-white/10 bg-color5/85 py-8 sm:py-10">
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 text-sm text-white/60">
             <p>Caminho Arcano. Leia, descubra e reflita sobre suas energias pessoais.</p>
             <p>Feito para inspirar autoconhecimento.</p>
