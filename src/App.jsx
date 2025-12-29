@@ -164,6 +164,136 @@ const tarotCards = {
   22: { name: "O Louco", desc: "Liberdade, espontaneidade e inicio." }
 };
 
+function normalizeApostrophes(value) {
+  return value.replace(/[’`´]/g, "'");
+}
+
+function formatNameSentenceCase(value) {
+  const lower = value.toLocaleLowerCase("pt-BR");
+
+  if (!lower) {
+    return "";
+  }
+
+  return lower[0].toLocaleUpperCase("pt-BR") + lower.slice(1);
+}
+
+function hasKeyboardRun(value) {
+  const rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+
+  for (const row of rows) {
+    const reversed = row.split("").reverse().join("");
+
+    for (let i = 0; i <= row.length - 4; i += 1) {
+      const chunk = row.slice(i, i + 4);
+      if (value.includes(chunk)) {
+        return true;
+      }
+    }
+
+    for (let i = 0; i <= reversed.length - 4; i += 1) {
+      const chunk = reversed.slice(i, i + 4);
+      if (value.includes(chunk)) {
+        return true;
+      }
+    }
+
+    for (let i = 0; i <= row.length - 3; i += 1) {
+      const triplet = row.slice(i, i + 3);
+      const first = value.indexOf(triplet);
+      if (first !== -1 && value.indexOf(triplet, first + 2) !== -1) {
+        return true;
+      }
+    }
+
+    for (let i = 0; i <= reversed.length - 3; i += 1) {
+      const triplet = reversed.slice(i, i + 3);
+      const first = value.indexOf(triplet);
+      if (first !== -1 && value.indexOf(triplet, first + 2) !== -1) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function validateAndFormatName(input) {
+  const normalized = normalizeApostrophes(input).replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return { valid: false, formattedName: "", error: "Digite seu nome para continuar." };
+  }
+
+  if (!/^[\p{L}\p{M}' ]+$/u.test(normalized)) {
+    return {
+      valid: false,
+      formattedName: "",
+      error: "Use apenas letras, espacos e apostrofos."
+    };
+  }
+
+  const compact = normalized.replace(/\s+/g, "");
+  if (compact.length < 2) {
+    return { valid: false, formattedName: "", error: "Digite pelo menos 2 letras." };
+  }
+
+  const formattedName = formatNameSentenceCase(normalized);
+  const lettersOnly = formattedName
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-záàâãéêíóôõúüç]/g, "");
+  const vowels = lettersOnly.match(/[aeiouáàâãéêíóôõúü]/g) || [];
+
+  if (vowels.length === 0) {
+    return {
+      valid: false,
+      formattedName,
+      error: "O nome precisa ter pelo menos uma vogal."
+    };
+  }
+
+  if (/(.)\1{3,}/.test(lettersOnly)) {
+    return {
+      valid: false,
+      formattedName,
+      error: "Evite repetir o mesmo caractere muitas vezes."
+    };
+  }
+
+  if (/[bcdfghjklmnpqrstvwxyzç]{5,}/.test(lettersOnly)) {
+    return {
+      valid: false,
+      formattedName,
+      error: "O nome tem muitas consoantes seguidas."
+    };
+  }
+
+  if (hasKeyboardRun(lettersOnly)) {
+    return {
+      valid: false,
+      formattedName,
+      error: "O nome parece uma sequencia de teclado."
+    };
+  }
+
+  return { valid: true, formattedName, error: null };
+}
+
+const elementAccents = {
+  Fogo: { label: "Fogo", className: "bg-gradient-to-br from-rose-400 to-orange-300" },
+  Terra: { label: "Terra", className: "bg-gradient-to-br from-amber-300 to-emerald-400" },
+  Ar: { label: "Ar", className: "bg-gradient-to-br from-sky-200 to-slate-200" },
+  Agua: { label: "Agua", className: "bg-gradient-to-br from-sky-400 to-blue-500" }
+};
+
+function getElementAccent(value) {
+  if (!value) {
+    return null;
+  }
+
+  return elementAccents[value] || { label: value, className: "bg-white/40" };
+}
+
 function formatDateInput(value) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
 
@@ -290,8 +420,11 @@ export default function App() {
   const [cabala, setCabala] = useState(null);
   const [tarot, setTarot] = useState(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const starWrapRef = useRef(null);
   const starCanvasRef = useRef(null);
+  const modalCanvasRef = useRef(null);
+  const elementAccent = getElementAccent(western?.element);
 
   useEffect(() => {
     const container = starWrapRef.current;
@@ -471,15 +604,219 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isModalOpen) {
+      return;
+    }
+
+    const canvas = modalCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    let animationId = 0;
+    let width = 0;
+    let height = 0;
+    let startTime = 0;
+    let particles = [];
+    let rays = [];
+    let twinkles = [];
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const duration = 1600;
+    const colors = [
+      [104, 178, 248],
+      [193, 152, 255],
+      [248, 242, 255]
+    ];
+
+    const createExplosion = () => {
+      const area = width * height;
+      const particleCount = Math.max(60, Math.min(140, Math.round(area / 3000)));
+      const rayCount = Math.max(10, Math.round(particleCount / 10));
+      const twinkleCount = Math.max(16, Math.round(particleCount / 4));
+      const maxRadius = Math.min(width, height) * 1.8;
+
+      particles = Array.from({ length: particleCount }, () => {
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        return {
+          angle: Math.random() * Math.PI * 2,
+          distance: maxRadius * (0.2 + Math.random() * 0.7),
+          drift: (Math.random() - 0.5) * 0.8,
+          size: 0.6 + Math.random() * 1.6,
+          alpha: 0.4 + Math.random() * 0.5,
+          life: 700 + Math.random() * 900,
+          color
+        };
+      });
+
+      rays = Array.from({ length: rayCount }, () => ({
+        angle: Math.random() * Math.PI * 2,
+        length: maxRadius * (0.5 + Math.random() * 0.6),
+        width: 0.6 + Math.random() * 1.2,
+        alpha: 0.2 + Math.random() * 0.35,
+        life: 500 + Math.random() * 700
+      }));
+
+      twinkles = Array.from({ length: twinkleCount }, () => {
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        return {
+          x: Math.random() * width,
+          y: Math.random() * height,
+          size: 0.4 + Math.random() * 1.2,
+          alpha: 0.12 + Math.random() * 0.3,
+          phase: Math.random() * Math.PI * 2,
+          color
+        };
+      });
+
+      startTime = 0;
+    };
+
+    const resize = () => {
+      const parent = canvas.parentElement;
+      width = parent ? parent.clientWidth : canvas.clientWidth;
+      height = parent ? parent.clientHeight : canvas.clientHeight;
+
+      if (!width || !height) {
+        return;
+      }
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      createExplosion();
+    };
+
+    const drawFrame = (elapsed) => {
+      if (!width || !height) {
+        return;
+      }
+
+      const centerX = width * 0.5;
+      const centerY = height * 0.32;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+
+      ctx.clearRect(0, 0, width, height);
+
+      const glowRadius = Math.min(width, height) * (1 + easeOut);
+      const glow = ctx.createRadialGradient(
+        centerX,
+        centerY,
+        0,
+        centerX,
+        centerY,
+        glowRadius
+      );
+      glow.addColorStop(0, `rgba(180, 215, 255, ${0.35 - progress * 0.15})`);
+      glow.addColorStop(0.45, `rgba(173, 132, 255, ${0.25 - progress * 0.12})`);
+      glow.addColorStop(1, "rgba(8, 5, 14, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
+
+      rays.forEach((ray) => {
+        const rayProgress = Math.min(elapsed / ray.life, 1);
+        const rayEase = 1 - Math.pow(1 - rayProgress, 2);
+        const length = ray.length * rayEase;
+        const alpha = (1 - rayProgress) * ray.alpha;
+        if (alpha <= 0) {
+          return;
+        }
+        ctx.strokeStyle = `rgba(104, 178, 248, ${alpha})`;
+        ctx.lineWidth = ray.width;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(
+          centerX + Math.cos(ray.angle) * length,
+          centerY + Math.sin(ray.angle) * length
+        );
+        ctx.stroke();
+      });
+
+      particles.forEach((particle) => {
+        const particleProgress = Math.min(elapsed / particle.life, 1);
+        const particleEase = 1 - Math.pow(1 - particleProgress, 3);
+        const distance = particle.distance * particleEase;
+        const angle = particle.angle + particle.drift * particleProgress;
+        const x = centerX + Math.cos(angle) * distance;
+        const y = centerY + Math.sin(angle) * distance;
+        const alpha = (1 - particleProgress) * particle.alpha;
+        if (alpha <= 0) {
+          return;
+        }
+        ctx.fillStyle = `rgba(${particle.color[0]}, ${particle.color[1]}, ${particle.color[2]}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(x, y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      twinkles.forEach((twinkle) => {
+        const flicker = 0.5 + 0.5 * Math.sin(elapsed * 0.004 + twinkle.phase);
+        const alpha = twinkle.alpha * flicker * (1 - progress * 0.4);
+        if (alpha <= 0) {
+          return;
+        }
+        ctx.fillStyle = `rgba(${twinkle.color[0]}, ${twinkle.color[1]}, ${twinkle.color[2]}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(twinkle.x, twinkle.y, twinkle.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    };
+
+    const render = (time) => {
+      if (!startTime) {
+        startTime = time;
+      }
+
+      const elapsed = time - startTime;
+      drawFrame(elapsed);
+
+      if (!prefersReducedMotion && elapsed < duration) {
+        animationId = requestAnimationFrame(render);
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      resize();
+      if (prefersReducedMotion) {
+        drawFrame(duration);
+      }
+    });
+
+    resize();
+    resizeObserver.observe(canvas.parentElement || canvas);
+
+    if (prefersReducedMotion) {
+      drawFrame(duration);
+    } else {
+      animationId = requestAnimationFrame(render);
+    }
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      resizeObserver.disconnect();
+    };
+  }, [isModalOpen]);
+
   const handleSubmit = (event) => {
     event.preventDefault();
     setError("");
 
-    const trimmedName = name.trim();
+    const nameCheck = validateAndFormatName(name);
     const date = parseDateInput(birthdate.trim());
 
-    if (!trimmedName) {
-      setError("Digite seu nome para continuar.");
+    if (!nameCheck.valid) {
+      setError(nameCheck.error);
       return;
     }
 
@@ -488,6 +825,7 @@ export default function App() {
       return;
     }
 
+    const formattedName = nameCheck.formattedName;
     const westernSign = getWesternSign(date.day, date.month);
     const chineseSign = getChineseSign(date.day, date.month, date.year);
     const cabalaNumber = getLifePathNumber(date.day, date.month, date.year);
@@ -500,6 +838,7 @@ export default function App() {
       desc: "Leitura em construcao para este arcano."
     };
 
+    setName(formattedName);
     setWestern(westernSign);
     setChinese(chineseSign);
     setCabala({
@@ -510,6 +849,12 @@ export default function App() {
       number: cabalaNumber,
       ...tarotInfo
     });
+    setIsModalOpen(true);
+
+    const westernSection = document.getElementById("ocidental");
+    if (westernSection) {
+      westernSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   };
 
   return (
@@ -591,7 +936,7 @@ export default function App() {
             <div className="fade-up space-y-6 sm:space-y-8">
               <div className="max-w-2xl space-y-4 sm:space-y-5">
                 <h1 className="text-3xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
-                  2026: O Ano da Ascensao.
+                  2026: O Ano do Cavalo de Fogo.
                 </h1>
                 <h2 className="text-base font-light text-white/80 sm:text-lg lg:text-xl">
                   Uma energia indomavel se aproxima. Neste ciclo, quem nao segura firme as
@@ -695,7 +1040,15 @@ export default function App() {
                 <span className="rounded-full border border-color3/40 bg-color3/20 px-3 py-1 text-[0.65rem] uppercase tracking-[0.2em]">
                   Elemento
                 </span>
-                <span>{western?.element ?? "--"}</span>
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      elementAccent ? elementAccent.className : "bg-white/25"
+                    } shadow-[0_0_12px_rgba(255,255,255,0.25)]`}
+                    aria-hidden="true"
+                  />
+                  <span>{elementAccent ? elementAccent.label : "--"}</span>
+                </span>
               </div>
               <h3 className="mt-6 text-xl font-semibold sm:text-2xl">
                 {western?.name ?? "Seu signo"}
@@ -793,6 +1146,64 @@ export default function App() {
             <p>Feito para inspirar autoconhecimento.</p>
           </div>
         </footer>
+
+        {isModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-10 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="revelacao-titulo"
+            onClick={() => setIsModalOpen(false)}
+          >
+            <div
+              className="reveal-in relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/15 bg-color5/95 p-6 text-center shadow-[0_25px_60px_rgba(8,5,14,0.6)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <canvas
+                ref={modalCanvasRef}
+                className="pointer-events-none absolute inset-0 h-full w-full opacity-90 mix-blend-screen"
+                aria-hidden="true"
+              />
+              <div className="relative z-10">
+                <p className="text-xs uppercase tracking-[0.3em] text-white/60">
+                  {name ? `${name}, o seu signo e:` : "o seu signo e:"}
+                </p>
+                <h3
+                  id="revelacao-titulo"
+                  className="mt-3 text-xl font-semibold sm:text-2xl"
+                >
+                  {western?.name ?? "--"}
+                </h3>
+                <p className="mt-3 text-base text-white/70">
+                  {chinese?.name ? (
+                    <>
+                      <span className="block">Signo chines:</span>
+                      <span className="block">{chinese.name}</span>
+                    </>
+                  ) : (
+                    "Signo chines em preparacao."
+                  )}
+                </p>
+                <button
+                  className="mt-6 inline-flex items-center justify-center rounded-full border border-white/20 bg-gradient-to-r from-color1 to-color3 px-6 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-color5 transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(80,110,229,0.35)]"
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    const westernSection = document.getElementById("ocidental");
+                    if (westernSection) {
+                      westernSection.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start"
+                      });
+                    }
+                  }}
+                >
+                  Ver tudo
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
