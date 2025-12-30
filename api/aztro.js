@@ -1,8 +1,42 @@
-﻿export default async function handler(req, res) {
-  const signParam = req.query?.sign;
-  const dayParam = req.query?.day;
-  const sign = Array.isArray(signParam) ? signParam[0] : signParam;
-  const day = Array.isArray(dayParam) ? dayParam[0] : dayParam || "today";
+function getParam(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function readBodyParams(body) {
+  if (!body) {
+    return {};
+  }
+
+  if (typeof body === "string") {
+    const params = new URLSearchParams(body);
+    return {
+      sign: params.get("sign") || undefined,
+      day: params.get("day") || undefined
+    };
+  }
+
+  if (body instanceof URLSearchParams) {
+    return {
+      sign: body.get("sign") || undefined,
+      day: body.get("day") || undefined
+    };
+  }
+
+  if (typeof body === "object") {
+    return {
+      sign: getParam(body.sign),
+      day: getParam(body.day)
+    };
+  }
+
+  return {};
+}
+
+export default async function handler(req, res) {
+  const query = req.query || {};
+  const bodyParams = readBodyParams(req.body);
+  const sign = getParam(query.sign) || bodyParams.sign;
+  const day = getParam(query.day) || bodyParams.day || "today";
 
   if (!sign) {
     res.statusCode = 400;
@@ -17,13 +51,16 @@
     const response = await fetch(`https://aztro.sameerkumar.website/?${params}`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (compatible; CaminhoArcano/1.0)"
       },
       body: params
     });
 
     const body = await response.text();
     res.statusCode = response.status;
+    res.setHeader("Cache-Control", "no-store");
     res.setHeader(
       "Content-Type",
       response.headers.get("content-type") || "application/json"
