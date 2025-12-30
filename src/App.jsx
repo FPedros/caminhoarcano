@@ -555,10 +555,65 @@ function hasCjkCharacters(value) {
 }
 
 function isLikelyPortuguese(value) {
-  return /[ãõçáéíóúâêôà]/i.test(value);
+  return /\b(nao|voce|para|com|que|uma|seu|sua|mais|hoje|sobre|sempre|muito|bem|porque|quando|entao)\b/i.test(value);
 }
 
-async function translateToPtBr(text) {
+const translationCache = new Map();
+let translationQueue = Promise.resolve();
+let translationCooldownUntil = 0;
+let lastTranslationAt = 0;
+const TRANSLATION_MIN_INTERVAL_MS = 2000;
+const TRANSLATION_BACKOFF_MS = 60000;
+const TRANSLATION_RETRY_BASE_MS = 4000;
+const TRANSLATION_MAX_ATTEMPTS = 20;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function queueTranslation(task) {
+  const next = translationQueue.then(task, task);
+  translationQueue = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+
+function isTranslationCoolingDown() {
+  return Date.now() < translationCooldownUntil;
+}
+
+function setTranslationCooldown(retryAfterSeconds) {
+  const backoffMs =
+    typeof retryAfterSeconds === "number" && retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000
+      : TRANSLATION_BACKOFF_MS;
+  translationCooldownUntil = Date.now() + backoffMs;
+}
+
+async function throttleTranslation() {
+  const now = Date.now();
+  const wait = Math.max(
+    0,
+    TRANSLATION_MIN_INTERVAL_MS - (now - lastTranslationAt)
+  );
+  if (wait > 0) {
+    await sleep(wait);
+  }
+  lastTranslationAt = Date.now();
+}
+
+function getRetryDelay(attempt) {
+  return Math.min(
+    TRANSLATION_BACKOFF_MS,
+    TRANSLATION_RETRY_BASE_MS * Math.pow(2, attempt)
+  );
+}
+
+async function translateToPtBr(text, options = {}) {
+  const ensureTranslation = options.ensureTranslation === true;
+
   if (!text) {
     return { text: "", translated: false };
   }
@@ -567,27 +622,122 @@ async function translateToPtBr(text) {
     return { text, translated: false };
   }
 
-  const sourceLang = hasCjkCharacters(text) ? "zh-CN" : "en";
-  const params = new URLSearchParams({
-    q: text,
-    langpair: `${sourceLang}|pt-br`
+  const cached = translationCache.get(text);
+  if (cached) {
+    return cached;
+  }
+
+  return queueTranslation(async () => {
+    const original = text;
+    const cachedInner = translationCache.get(original);
+    if (cachedInner) {
+      return cachedInner;
+    }
+    const sourceLang = hasCjkCharacters(original) ? "zh-CN" : "en";
+    const targetLanguages = ["pt-BR", "pt"];
+    const maxAttempts = ensureTranslation ? TRANSLATION_MAX_ATTEMPTS : 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (isTranslationCoolingDown()) {
+        if (!ensureTranslation) {
+          return { text: original, translated: false };
+        }
+        const waitMs = Math.max(0, translationCooldownUntil - Date.now());
+        if (waitMs > 0) {
+          await sleep(waitMs);
+        }
+      }
+
+      await throttleTranslation();
+
+      let shouldRetry = false;
+
+      for (const targetLang of targetLanguages) {
+        let response = null;
+        try {
+          response = await fetch(
+            `${TRANSLATE_PROXY_PATH}?${new URLSearchParams({
+              q: original,
+              langpair: `${sourceLang}|${targetLang}`
+            }).toString()}`
+          );
+        } catch (fetchError) {
+          shouldRetry = true;
+          break;
+        }
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            const retryAfterHeader = response.headers.get("retry-after");
+            const retryAfterSeconds = retryAfterHeader
+              ? Number(retryAfterHeader)
+              : null;
+            setTranslationCooldown(
+              Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : null
+            );
+            shouldRetry = true;
+            break;
+          }
+
+          if (response.status >= 500) {
+            shouldRetry = true;
+            break;
+          }
+
+          if (targetLang === targetLanguages[targetLanguages.length - 1]) {
+            return { text: original, translated: false };
+          }
+          continue;
+        }
+
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (parseError) {
+          shouldRetry = true;
+          break;
+        }
+
+        const translatedText =
+          payload?.responseData?.translatedText ||
+          payload?.matches?.[0]?.translation;
+        const normalized =
+          typeof translatedText === "string" ? translatedText.trim() : "";
+
+        if (!normalized) {
+          shouldRetry = targetLang === targetLanguages[targetLanguages.length - 1];
+          if (shouldRetry) {
+            break;
+          }
+          continue;
+        }
+
+        if (normalized.toLowerCase() === original.trim().toLowerCase()) {
+          shouldRetry = targetLang === targetLanguages[targetLanguages.length - 1];
+          if (shouldRetry) {
+            break;
+          }
+          continue;
+        }
+
+        const result = { text: normalized, translated: true };
+        translationCache.set(original, result);
+        return result;
+      }
+
+      if (!ensureTranslation) {
+        return { text: original, translated: false };
+      }
+
+      if (!shouldRetry) {
+        return { text: original, translated: false };
+      }
+
+      await sleep(getRetryDelay(attempt));
+    }
+
+    return { text: original, translated: false };
   });
-  const response = await fetch(`${TRANSLATE_PROXY_PATH}?${params.toString()}`);
-
-  if (!response.ok) {
-    const error = new Error("Translation request failed.");
-    error.status = response.status;
-    throw error;
-  }
-
-  const payload = await response.json();
-  const translatedText = payload?.responseData?.translatedText;
-
-  if (!translatedText) {
-    return { text, translated: false };
-  }
-
-  return { text: translatedText, translated: true };
 }
 
 async function readHtmlResponse(response) {
@@ -905,7 +1055,6 @@ export default function App() {
   const starWrapRef = useRef(null);
   const starCanvasRef = useRef(null);
   const modalCanvasRef = useRef(null);
-  const hasLoadedAztroRef = useRef(false);
   const calendarDbRef = useRef(null);
   const calendarLoadedRef = useRef(false);
   const elementAccent = getElementAccent(western?.element);
@@ -1369,24 +1518,28 @@ export default function App() {
 
     try {
       const data = await fetchAztro(signKey);
-      let description = data.description;
-      let translated = false;
+      const description = data.description;
+      const translation = await translateToPtBr(description, {
+        ensureTranslation: true
+      });
 
-      try {
-        const translation = await translateToPtBr(description);
-        description = translation.text;
-        translated = translation.translated;
-      } catch (translationError) {
-        description = data.description;
-        translated = false;
+      if (!translation.translated) {
+        setAztroBySign((prev) => ({
+          ...prev,
+          [signKey]: {
+            status: "error",
+            message: "Nao foi possivel traduzir agora. Tente novamente."
+          }
+        }));
+        return;
       }
 
       setAztroBySign((prev) => ({
         ...prev,
         [signKey]: {
           status: "success",
-          description,
-          translated,
+          description: translation.text,
+          translated: true,
           source: data
         }
       }));
@@ -1413,31 +1566,6 @@ export default function App() {
       }));
     }
   };
-
-  useEffect(() => {
-    if (!isAstroPage) {
-      hasLoadedAztroRef.current = false;
-      return;
-    }
-
-    if (hasLoadedAztroRef.current) {
-      return;
-    }
-
-    hasLoadedAztroRef.current = true;
-
-    const loadAll = async () => {
-      for (const sign of westernSigns) {
-        const signKey = aztroSignKeys[sign.name];
-        if (!signKey) {
-          continue;
-        }
-        await handleLoadAztro(signKey);
-      }
-    };
-
-    loadAll();
-  }, [isAstroPage]);
 
   useEffect(() => {
     if (!chinese?.name) {
@@ -1952,6 +2080,7 @@ export default function App() {
                       const isLoading = horoscope?.status === "loading";
                       const isSuccess = horoscope?.status === "success";
                       const isError = horoscope?.status === "error";
+                      const canRequest = Boolean(signKey);
 
                       return (
                         <article
@@ -1980,22 +2109,29 @@ export default function App() {
                           <p className="mt-1 text-xs text-white/50">{sign.range}</p>
                           <p className="mt-3 text-sm text-white/75">{sign.desc}</p>
                           <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                            <div className="text-[0.65rem] uppercase tracking-[0.2em] text-white/60">
-                              Resumo de hoje
-                            </div>
+                            <button
+                              className="w-full rounded-full bg-gradient-to-r from-color1 to-color3 px-4 py-2.5 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-color5 shadow-[0_12px_30px_rgba(80,110,229,0.35)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(80,110,229,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
+                              type="button"
+                              onClick={() => handleLoadAztro(signKey)}
+                              disabled={!canRequest || isLoading}
+                            >
+                              {isLoading ? "Carregando..." : "Horoscopo hoje"}
+                            </button>
                             {isSuccess ? (
-                              <>
-                                <p className="mt-3 text-sm text-white/75">
-                                  {horoscope?.description}
-                                </p>
-                              </>
+                              <p className="mt-3 text-sm text-white/75">
+                                {horoscope?.description}
+                              </p>
                             ) : isError ? (
                               <p className="mt-3 text-sm text-rose-200">
                                 {horoscope?.message ?? "Nao foi possivel carregar agora."}
                               </p>
+                            ) : isLoading ? (
+                              <p className="mt-3 text-xs text-white/60">
+                                Traduzindo horoscopo...
+                              </p>
                             ) : (
                               <p className="mt-3 text-xs text-white/50">
-                                Previsao diaria via Aztro.
+                                Clique em "Horoscopo hoje" para ver o resumo.
                               </p>
                             )}
                           </div>
